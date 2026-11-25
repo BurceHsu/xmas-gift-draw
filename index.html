@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>聖誕交換禮物抽籤</title>
+<style>
+  :root{--bg:#0f2a1d;--card:#173a29;--ink:#fdf6e3;--muted:#a8c4b2;--red:#d6382f;--gold:#f2c14e;}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -10%,#1e5a3c,var(--bg));color:var(--ink);
+    font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;display:flex;justify-content:center;padding:24px 16px}
+  main{width:100%;max-width:480px}
+  h1{text-align:center;font-size:28px;margin:8px 0 4px}
+  .sub{text-align:center;color:var(--muted);margin:0 0 24px;font-size:14px}
+  .card{background:var(--card);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 6px 20px #0005}
+  input{width:100%;padding:12px;border-radius:10px;border:1px solid #2f6a4a;background:#0f2a1d;color:var(--ink);font-size:16px;margin-bottom:8px}
+  button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:12px 18px;font-weight:600;background:var(--red);color:#fff;width:100%}
+  button.ghost{background:transparent;border:1px solid var(--gold);color:var(--gold);width:auto;padding:8px 14px;font-size:14px}
+  button:disabled{opacity:.5}
+  .row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2f6a4a}
+  .row:last-child{border:0}
+  .hint{font-size:13px;color:var(--muted);line-height:1.6}
+  .warn{color:var(--gold)}
+  .big{font-size:44px;text-align:center;margin:24px 0;font-weight:800;min-height:60px;color:var(--gold);word-break:break-all}
+  .center{text-align:center}
+  .hidden{display:none}
+  .links{display:flex;gap:6px;margin-top:8px}
+  .links button{width:auto;flex:1;font-size:13px;padding:8px}
+  .small{background:#2f6a4a}
+</style>
+</head>
+<body>
+<main>
+  <h1>🎄 聖誕交換禮物抽籤 🎁</h1>
+  <p class="sub">每人只能抽一次，只有自己知道抽到誰</p>
+
+  <!-- 主辦人：建立抽籤 -->
+  <section id="setup">
+    <div class="card">
+      <div id="inputs"></div>
+      <button class="small" id="add" style="margin-bottom:10px">＋ 新增參加者</button>
+      <button id="gen">產生抽籤結果</button>
+    </div>
+    <div id="result" class="card hidden"></div>
+  </section>
+
+  <!-- 參加者：抽籤 -->
+  <section id="draw" class="hidden">
+    <div class="card center">
+      <p id="hello" style="font-size:20px;margin:0 0 8px"></p>
+      <div class="big" id="target">？</div>
+      <button id="go">🎲 抽籤</button>
+      <p class="hint" id="after" style="margin-top:14px"></p>
+    </div>
+  </section>
+
+  <div class="card hint">
+    <b class="warn">規則</b><br>
+    • 每人只能抽一次，只有自己知道抽到誰。<br>
+    • 不會抽到自己，也不會兩個人互抽。<br>
+    • 每人剛好送一個人、收一份禮物。<br><br>
+    <b class="warn">怎麼用</b><br>
+    1. 輸入 6 個人的名字，按「產生抽籤結果」。<br>
+    2. 每個人會得到一條專屬連結，<b>私訊給對應的人</b>（別的人看不到）。<br>
+    3. 大家各自打開自己的連結，按下「抽籤」才會顯示抽到誰。<br>
+    <span class="warn">主辦人請不要點開別人的連結，這樣你也不會知道誰抽到誰。</span>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ---------- 編碼 ---------- */
+const enc = o => {
+  const b = new TextEncoder().encode(JSON.stringify(o));
+  let s = ''; b.forEach(x => s += String.fromCharCode(x));
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+};
+const dec = str => {
+  str = str.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(str), b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(b));
+};
+
+/* ---------- 抽籤：隨機排成一個大圈，每人送給下一個 ----------
+   保證：不會抽到自己、不會兩人互抽、每人剛好送一人收一人 */
+function makeAssignment(names){
+  const a = names.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.map((n, i) => ({ from: n, to: a[(i + 1) % a.length] }));
+}
+
+/* ---------- 主辦人畫面 ---------- */
+const inputs = $('#inputs');
+function addInput(v=''){
+  const el = document.createElement('input');
+  el.placeholder = '名字 ' + (inputs.children.length + 1);
+  el.value = v; inputs.appendChild(el);
+}
+for (let i = 0; i < 6; i++) addInput();
+$('#add').onclick = () => addInput();
+
+$('#gen').onclick = () => {
+  const names = [...inputs.querySelectorAll('input')].map(i => i.value.trim()).filter(Boolean);
+  if (names.length < 3) return alert('至少需要 3 個人');
+  if (new Set(names).size !== names.length) return alert('名字不能重複');
+  const list = makeAssignment(names);
+  const base = location.href.split('#')[0];
+  const box = $('#result');
+  box.classList.remove('hidden');
+  box.innerHTML = '<b>專屬連結（請私訊給對應的人）</b><p class="hint warn">重新按「產生」會得到全新的結果，舊連結作廢。</p>';
+  // 打亂顯示順序，避免從順序猜出誰抽誰（連結本身只含自己那一筆）
+  names.forEach(n => {
+    const p = list.find(x => x.from === n);
+    const url = base + '#' + enc({ f: p.from, t: p.to, all: names });
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = '<span></span>';
+    row.firstChild.textContent = n;
+    const b = document.createElement('button'); b.className = 'ghost'; b.textContent = '複製連結';
+    b.onclick = async () => {
+      try { await navigator.clipboard.writeText(url); }
+      catch { prompt('請手動複製', url); }
+      b.textContent = '已複製 ✓'; setTimeout(() => b.textContent = '複製連結', 1500);
+    };
+    row.appendChild(b); box.appendChild(row);
+  });
+  box.scrollIntoView({ behavior: 'smooth' });
+};
+
+/* ---------- 參加者畫面 ---------- */
+function showDraw(d){
+  $('#setup').classList.add('hidden');
+  $('#draw').classList.remove('hidden');
+  $('#hello').textContent = '嗨 ' + d.f + '！';
+  const key = 'drawn:' + d.f + ':' + d.t;
+  const go = $('#go'), tgt = $('#target');
+  let done = false;
+  try { done = localStorage.getItem(key) === '1'; } catch {}
+  const reveal = () => {
+    tgt.textContent = d.t;
+    $('#after').textContent = '🎁 你要送禮物給「' + d.t + '」，記得保密喔！';
+    go.textContent = '🙈 隱藏結果';
+    go.onclick = () => { tgt.textContent = '？'; $('#after').textContent = '';
+      go.textContent = '👀 再看一次'; go.onclick = reveal; };
+  };
+  if (done) { go.textContent = '👀 再看一次'; go.onclick = reveal; $('#after').textContent = '你已經抽過囉，結果不會改變。'; return; }
+  go.onclick = () => {
+    go.disabled = true; let n = 0;
+    const t = setInterval(() => {
+      tgt.textContent = d.all[Math.floor(Math.random() * d.all.length)];
+      if (++n > 22) { clearInterval(t); go.disabled = false;
+        try { localStorage.setItem(key, '1'); } catch {}
+        reveal(); }
+    }, 90);
+  };
+}
+
+if (location.hash.length > 1) {
+  try { showDraw(dec(location.hash.slice(1))); }
+  catch { alert('連結無效，請向主辦人重新索取'); }
+}
+</script>
+</body>
+</html>
